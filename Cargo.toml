@@ -2,19 +2,19 @@
 name = "rsomics-intervals"
 version = "0.1.5"
 description = "BED algebra + interval index + GFF/GTF interval extraction for the rsomics-* tool family. Layer A primitive."
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-repository.workspace = true
-authors.workspace = true
+edition = "2024"
+rust-version = "1.91"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/omics-rust/rsomics-world"
+authors = ["Zane Leong <efd@live.com>"]
 categories = ["science"]
 keywords = ["bed", "intervals", "bioinformatics", "genomics", "bedtools"]
 
 [dependencies]
-rsomics-common = { path = "../rsomics-common", version = "0.6" }
+rsomics-common = { version = "0.6" }
 coitrees = "0.4"
-serde = { workspace = true, features = ["derive"] }
-thiserror.workspace = true
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
 
 [features]
 default = []
@@ -29,5 +29,3 @@ optional = true
 tempfile = "3"
 proptest = "1"
 
-[lints]
-workspace = true
