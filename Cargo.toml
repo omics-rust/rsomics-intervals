@@ -22,7 +22,7 @@ default = []
 rayon = ["dep:rayon"]
 
 [dependencies.rayon]
-workspace = true
+version = "1"
 optional = true
 
 [dev-dependencies]
