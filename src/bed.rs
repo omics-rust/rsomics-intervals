@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
 use rsomics_common::{Context, Result, RsomicsError};
 
@@ -69,6 +69,52 @@ pub fn write_bed6<W: Write, I: IntoIterator<Item = Interval>>(mut w: W, ivs: I) 
 #[allow(clippy::missing_errors_doc)]
 pub fn read_bytes(bytes: &[u8]) -> Result<Vec<Interval>> {
     read(io::Cursor::new(bytes))
+}
+
+/// Coordinate-sort a BED stream by (chrom, start), preserving every original
+/// column and line. Reads the whole input once and sorts byte-slice records in
+/// place — no per-line `String`, no per-record `Interval`, no chrom clones —
+/// so it stays allocation-flat on multi-million-line inputs. The sort is stable
+/// on (chrom, start), matching `bedtools sort` (equal keys keep input order).
+/// chrom order is lexicographic on raw bytes, also matching bedtools' default.
+#[allow(clippy::missing_errors_doc)]
+pub fn sort_bed3<R: Read, W: Write>(mut r: R, w: W) -> Result<()> {
+    let mut data = Vec::new();
+    r.read_to_end(&mut data).map_err(RsomicsError::Io)?;
+
+    let mut recs: Vec<(&[u8], u64, &[u8])> = Vec::new();
+    let mut lineno = 0usize;
+    for raw in data.split(|&b| b == b'\n') {
+        let line = match raw.last() {
+            Some(b'\r') => &raw[..raw.len() - 1],
+            _ => raw,
+        };
+        if line.is_empty()
+            || line[0] == b'#'
+            || line.starts_with(b"track")
+            || line.starts_with(b"browser")
+        {
+            continue;
+        }
+        lineno += 1;
+        let mut it = line.split(|&c| c == b'\t');
+        let chrom = it.next().unwrap_or(b"");
+        let start = parse_u64(it.next().ok_or_else(|| {
+            RsomicsError::InvalidInput(format!("BED line {lineno}: missing start"))
+        })?)
+        .map_err(|e| RsomicsError::InvalidInput(format!("BED line {lineno}: {e}")))?;
+        recs.push((chrom, start, line));
+    }
+
+    recs.sort_by(|a, b| a.0.cmp(b.0).then(a.1.cmp(&b.1)));
+
+    let mut bw = BufWriter::new(w);
+    for (_, _, line) in &recs {
+        bw.write_all(line).map_err(RsomicsError::Io)?;
+        bw.write_all(b"\n").map_err(RsomicsError::Io)?;
+    }
+    bw.flush().map_err(RsomicsError::Io)?;
+    Ok(())
 }
 
 // requires pre-sorted BED3 (chrom then start) — out-of-order or reappearing chrom fails loud; chrom is opaque bytes

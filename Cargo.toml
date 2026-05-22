@@ -1,6 +1,6 @@
 [package]
 name = "rsomics-intervals"
-version = "0.1.5"
+version = "0.1.6"
 description = "BED algebra + interval index + GFF/GTF interval extraction for the rsomics-* tool family. Layer A primitive."
 edition = "2024"
 rust-version = "1.91"
