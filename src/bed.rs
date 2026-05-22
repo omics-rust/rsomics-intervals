@@ -6,38 +6,40 @@ use crate::interval::{Interval, Strand};
 
 // skip empty + #-comment lines — matches bedtools
 #[allow(clippy::missing_errors_doc)]
-pub fn read<R: Read>(r: R) -> Result<Vec<Interval>> {
+pub fn read<R: Read>(mut r: R) -> Result<Vec<Interval>> {
+    let mut data = Vec::new();
+    r.read_to_end(&mut data).map_err(RsomicsError::Io)?;
     let mut out = Vec::new();
-    for (lineno, line) in BufReader::new(r).lines().enumerate() {
-        let line = line.map_err(RsomicsError::Io)?;
-        let trimmed = line.trim_end();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+    for (lineno, raw) in data.split(|&b| b == b'\n').enumerate() {
+        // strip trailing ASCII whitespace — equivalent to the old
+        // `.lines()` + `str::trim_end()` (drops \r from \r\n + trailing blanks)
+        let mut len = raw.len();
+        while len > 0 && raw[len - 1].is_ascii_whitespace() {
+            len -= 1;
+        }
+        let line = &raw[..len];
+        if line.is_empty() || line[0] == b'#' {
             continue;
         }
-        let iv = parse_line(trimmed)
+        let iv = parse_line(line)
             .map_err(|e| RsomicsError::InvalidInput(format!("BED line {}: {e}", lineno + 1)))?;
         out.push(iv);
     }
     Ok(out)
 }
 
-fn parse_line(s: &str) -> std::result::Result<Interval, String> {
-    let mut fields = s.split('\t');
+fn parse_line(s: &[u8]) -> std::result::Result<Interval, String> {
+    let mut fields = s.split(|&c| c == b'\t');
     let chrom = fields.next().ok_or("missing chrom")?;
-    let start_s = fields.next().ok_or("missing start")?;
-    let end_s = fields.next().ok_or("missing end")?;
-    let start: u64 = start_s
-        .parse()
-        .map_err(|e| format!("bad start {start_s:?}: {e}"))?;
-    let end: u64 = end_s
-        .parse()
-        .map_err(|e| format!("bad end {end_s:?}: {e}"))?;
+    let start = parse_u64(fields.next().ok_or("missing start")?)?;
+    let end = parse_u64(fields.next().ok_or("missing end")?)?;
     let _name = fields.next();
     let _score = fields.next();
     let strand = fields
         .next()
-        .and_then(|s| s.as_bytes().first().copied())
+        .and_then(|f| f.first().copied())
         .and_then(Strand::from_byte);
+    let chrom = std::str::from_utf8(chrom).map_err(|e| format!("non-UTF8 chrom: {e}"))?;
     let mut iv = Interval::new(chrom, start, end).map_err(|e| e.to_string())?;
     iv.strand = strand;
     Ok(iv)
